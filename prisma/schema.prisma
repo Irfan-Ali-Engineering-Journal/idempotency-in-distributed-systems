@@ -1,0 +1,76 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+}
+
+enum IdempotencyStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ProviderTransactionStatus {
+  SUCCEEDED
+  FAILED
+}
+
+model Payment {
+  id                    String        @id @default(uuid()) @db.Uuid
+  amount                Decimal       @db.Decimal(18, 2)
+  currency              String        @db.VarChar(10)
+  status                PaymentStatus @default(PENDING)
+  customerReference     String        @map("customer_reference") @db.VarChar(255)
+  providerTransactionId String?       @map("provider_transaction_id") @db.VarChar(255)
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+
+  @@index([customerReference])
+  @@index([status])
+  @@index([createdAt])
+  @@map("payments")
+}
+
+model IdempotencyRecord {
+  id                 String            @id @default(uuid()) @db.Uuid
+  key                String            @unique @db.VarChar(255)
+  requestHash        String            @map("request_hash") @db.VarChar(64)
+  status             IdempotencyStatus @default(PROCESSING)
+  responseStatusCode Int?              @map("response_status_code")
+  responseBody       Json?             @map("response_body")
+  paymentId          String?           @map("payment_id") @db.Uuid
+  leaseExpiresAt     DateTime?         @map("lease_expires_at")
+  expiresAt          DateTime          @map("expires_at")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  @@index([expiresAt])
+  @@index([status])
+  @@index([paymentId])
+  @@index([status, leaseExpiresAt])
+  @@map("idempotency_records")
+}
+
+model ProviderTransaction {
+  id                     String                    @id @default(uuid()) @db.Uuid
+  providerIdempotencyKey String                    @unique @map("provider_idempotency_key") @db.VarChar(255)
+  paymentId              String                    @map("payment_id") @db.Uuid
+  amount                 Decimal                   @db.Decimal(18, 2)
+  currency               String                    @db.VarChar(10)
+  status                 ProviderTransactionStatus
+  createdAt              DateTime                  @default(now()) @map("created_at")
+
+  @@index([paymentId])
+  @@map("provider_transactions")
+}

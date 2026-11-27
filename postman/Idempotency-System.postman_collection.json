@@ -1,0 +1,210 @@
+{
+  "info": {
+    "name": "Idempotency in Distributed Systems",
+    "description": "Production-style idempotent payment API demo collection covering happy paths, retries, payload mismatches, concurrency, timeouts, and lookups.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "idempotencyKey", "value": "payment-order-1001" },
+    { "key": "paymentId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. First Payment",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "if (json.id) { pm.collectionVariables.set('paymentId', json.id); }",
+              "pm.test('Idempotency-Replayed is false', () => pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.eql('false'));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 5000,\n  \"currency\": \"PKR\",\n  \"customerReference\": \"customer-101\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/payments",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "payments"]
+        }
+      }
+    },
+    {
+      "name": "2. Duplicate Payment (Safe Retry)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+              "pm.test('Idempotency-Replayed is true', () => pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.eql('true'));",
+              "pm.test('Same paymentId returned', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('paymentId')));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 5000,\n  \"currency\": \"PKR\",\n  \"customerReference\": \"customer-101\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/payments",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "payments"]
+        }
+      }
+    },
+    {
+      "name": "3. Same Key, Different Payload (422)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 422 Unprocessable Entity', () => pm.response.to.have.status(422));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 10000,\n  \"currency\": \"PKR\",\n  \"customerReference\": \"customer-101\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/payments",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "payments"]
+        }
+      }
+    },
+    {
+      "name": "4. Concurrent Payment Test (Delayed)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "concurrent-demo-key-1" },
+          { "key": "X-Simulate-Behavior", "value": "delay" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 2500,\n  \"currency\": \"PKR\",\n  \"customerReference\": \"customer-202\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/payments",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "payments"]
+        }
+      }
+    },
+    {
+      "name": "5. Simulated Payment Failure",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "failed-payment-demo-1" },
+          { "key": "X-Simulate-Behavior", "value": "fail" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 1500,\n  \"currency\": \"PKR\",\n  \"customerReference\": \"customer-303\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/payments",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "payments"]
+        }
+      }
+    },
+    {
+      "name": "6a. Simulated Timeout (Step 1)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "timeout-demo-key-1" },
+          { "key": "X-Simulate-Behavior", "value": "timeout" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 7500,\n  \"currency\": \"PKR\",\n  \"customerReference\": \"customer-404\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/payments",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "payments"]
+        }
+      }
+    },
+    {
+      "name": "6b. Retry After Timeout (Step 2 - Recover)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "timeout-demo-key-1" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 7500,\n  \"currency\": \"PKR\",\n  \"customerReference\": \"customer-404\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/payments",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "payments"]
+        }
+      }
+    },
+    {
+      "name": "7. Payment Lookup",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/payments/{{paymentId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "payments", "{{paymentId}}"]
+        }
+      }
+    },
+    {
+      "name": "8. Idempotency Record Lookup",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/idempotency/{{idempotencyKey}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "idempotency", "{{idempotencyKey}}"]
+        }
+      }
+    }
+  ]
+}
